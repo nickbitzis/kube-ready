@@ -1,0 +1,11 @@
+# Runs on the whole repo, not just the changed files, because cross-object checks
+# (Service selectors, HPA targets, PDBs, Ingress backends) need every manifest.
+# Point it at your manifest folder with args, for example: args: [deploy/]
+- id: kubeready
+  name: kubeready
+  description: Lint Kubernetes manifests for production readiness.
+  entry: kubeready
+  language: python
+  files: \.ya?ml$
+  pass_filenames: false
+  args: [--fail-on, error]

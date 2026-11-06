@@ -1,0 +1,45 @@
+name: kubeready
+description: Lint Kubernetes manifests for production readiness and write a SARIF report for code scanning.
+author: Nick Bitzis
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  paths:
+    description: Space-separated files or directories to scan.
+    default: "."
+  fail-on:
+    description: Fail the step at or above this severity (error, warning, info, none).
+    default: error
+  sarif-file:
+    description: Where to write the SARIF report.
+    default: kubeready.sarif
+
+outputs:
+  sarif-file:
+    description: Path to the SARIF report, for github/codeql-action/upload-sarif.
+    value: ${{ inputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+
+    # Inputs go through env vars, not inline ${{ }}, so a crafted input cannot inject shell.
+    - name: Write SARIF report
+      shell: bash
+      env:
+        KR_PATHS: ${{ inputs.paths }}
+        KR_SARIF: ${{ inputs.sarif-file }}
+      run: |
+        # $KR_PATHS is unquoted on purpose so several paths split into separate arguments.
+        uvx --from "$GITHUB_ACTION_PATH" kubeready $KR_PATHS --format sarif --output "$KR_SARIF" --fail-on none
+
+    - name: Check manifests
+      shell: bash
+      env:
+        KR_PATHS: ${{ inputs.paths }}
+        KR_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        uvx --from "$GITHUB_ACTION_PATH" kubeready $KR_PATHS --explain --fail-on "$KR_FAIL_ON"
