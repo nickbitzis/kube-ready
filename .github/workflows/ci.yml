@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: uv sync --python 3.12
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Test
+        run: uv run pytest -q
+
+  scan:
+    # Dogfood: run this repo's own composite action on the fixed example and
+    # publish the results to the Security tab.
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      security-events: write  # required by upload-sarif
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run kubeready
+        id: kubeready
+        uses: ./
+        with:
+          paths: examples/fixed
+          fail-on: warning
+      # Needs code scanning enabled on the repo (public repos have it; private
+      # repos need GitHub Advanced Security). Without it this step fails.
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.kubeready.outputs.sarif-file }}
+          category: kubeready
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t kubeready:ci .
+      - name: Run image on the examples
+        run: |
+          docker run --rm -v "$PWD/examples:/work:ro" kubeready:ci fixed --fail-on warning
+          # The bad example must fail with exit code 1.
+          set +e; docker run --rm -v "$PWD/examples:/work:ro" kubeready:ci bad > /dev/null; code=$?; set -e
+          test "$code" -eq 1
